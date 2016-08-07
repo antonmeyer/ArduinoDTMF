@@ -23,7 +23,7 @@ Be careful: telephone uses voltage up to 75 Volt and inductors might generate na
 If you connect it to the last mile to your phone service provider consider all the safety rules for outdoor lines.
 
 Licence:
-Do what ever you like with that code. Except bother me nor others.
+Do what ever you like with that code (DWYL = devil licence). Except bother me nor others.
 
 ToDo
 usage of delay() might not be the best solution, if you do not want to block the CPU.
