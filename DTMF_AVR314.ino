@@ -15,7 +15,6 @@
 #define dtmfopin	3			//dtmf output pin 3 = OC2B, timer2
 #define ledpin 13
 #define IWVpin	7				// counts the impulse
-#define IWVstartpin = 8			// when low IWV on the way, high = ready
 
 //************************** SIN TABLE *************************************
 // Samples table : one period sampled on 128 samples and
