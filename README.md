@@ -16,7 +16,7 @@ Good enough.
 If you want to adapt it to different HW you have to care:
 - timer register TCCR2A, TCCR2B, OCR2B, TIMSK2
 - clock frequency : step width auc_frequencyH and auc_frequencyL
-- clock frequency : low pass filter
+- clock frequency : low pass filter for the PWM output pin
 
 Be careful: telephone uses voltage up to 75 Volt and inductors might generate nasty peaks, destroying your Arduino. I assume that you will use it for your in-house VoIP box.
 If you connect it to the last mile to your phone service provider consider all the safety rules for outdoor lines.
