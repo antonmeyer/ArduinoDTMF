@@ -25,4 +25,13 @@ If you connect it to the last mile to your phone service provider consider all t
 Licence:
 Do what ever you like with that code. Except bother me nor others.
 
+ToDo
+usage of delay() might not be the best solution, if you do not want to block the CPU.
+But you need to add callbacks and have to ensure the pause length. That makes it
+tricky. 
+And what else to do during dialing? DTMF ISR generates 31K timer interrupts per second.
+The DTMF ISR might care about tone duration. But than you have to poll anyhow, whether 
+tone duration is passed.
+During pause you might go into sleep mode to save some power.
+
 
