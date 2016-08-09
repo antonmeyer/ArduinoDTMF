@@ -14,6 +14,7 @@ but noise is 15 to 20 dB off the signal. Frequency accuracy is < 1%.
 Good enough.
 
 If you want to adapt it to different HW you have to care:
+- dtmfopin: look for the timer / PWM output pins
 - timer register TCCR2A, TCCR2B, OCR2B, TIMSK2
 - clock frequency : step width auc_frequencyH and auc_frequencyL
 - clock frequency : low pass filter for the PWM output pin
