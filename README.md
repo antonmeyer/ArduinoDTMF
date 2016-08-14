@@ -6,9 +6,9 @@ https://www-user.tu-chemnitz.de/~heha/basteln/Haus/Telefon/Impulswahl%E2%86%92DT
 
 It is working with a W48 dialer and a Fritzbox.
 
-PWM output on Pin 4 needs a passive filter.
-I used a RLC low pass filter. R = 46 Ohm, L unknown, C = 4.7 uF.
-Coupled into the phone at microphone, with a 100 nF capacitor.
+PWM output on Pin 3 needs a passive filter.
+I used a RLC low pass filter. R = 46 Ohm, L unknown, C = 1 uF.
+Coupled into the phone at microphone, with a 470 nF capacitor.
 Spectral analysis (done with a sound card and audacity) looks terrible,
 but noise is 15 to 20 dB off the signal. Frequency accuracy is < 1%.
 Good enough.
