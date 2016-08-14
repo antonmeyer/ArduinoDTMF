@@ -13,6 +13,9 @@ Spectral analysis (done with a sound card and audacity) looks terrible,
 but noise is 15 to 20 dB off the signal. Frequency accuracy is < 1%.
 Good enough.
 
+Pin 7 is connected to the impulse rotary dialer contact. This "number" switch
+is connected to the arduino only. Remove all conncetion to the old phone.
+
 If you want to adapt it to different HW you have to care:
 - dtmfopin: look for the timer / PWM output pins
 - timer register TCCR2A, TCCR2B, OCR2B, TIMSK2
