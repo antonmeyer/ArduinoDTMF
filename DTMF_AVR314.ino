@@ -11,10 +11,9 @@
 #define  prescaler  1                // timer1 prescaler
 #define  N_samples  128              // Number of samples in lookup table
 #define  Fck        F_CPU/prescaler   // Timer1 working frequency
-#define  delaycyc   10               // port B setup delay cycles
 #define dtmfopin	3			//dtmf output pin 3 = OC2B, timer2
 #define ledpin 13
-#define IWVpin	7				// counts the impulse
+#define IWVpin	7				// counts the impulse from the rotary dialer
 
 //************************** SIN TABLE *************************************
 // Samples table : one period sampled on 128 samples and
@@ -75,7 +74,6 @@ ISR (TIMER2_OVF_vect)
 	i_TmpSinValB  =  (char)(((i_CurSinValB+4) >> 3)&(0x007F));
 	// calculate PWM value: high frequency value + 3/4 low frequency value
 	OCR2B = (auc_SinParam[i_TmpSinValA] + (auc_SinParam[i_TmpSinValB]-(auc_SinParam[i_TmpSinValB]>>2)));
-	
 }
 
 // counts the HW impulse from IWVpin on the RISING edge
@@ -97,7 +95,6 @@ void ISR_countImpulse (void)
 		last_impulse_at = millis();
 	};
 	//interrupts();
-
 }
 
 
@@ -124,7 +121,6 @@ void setup ()
 	bitClear(TIMSK2,TOIE2);
 	interrupts();             // enable all interrupts
 	// timer interrupt is enabled during dialing: bitSet(TIMSK2,TOIE2)
-
 }
 
 void dialNumber(String nrstr) {
