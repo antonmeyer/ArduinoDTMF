@@ -3,7 +3,7 @@
 #include <PinChangeInterruptBoards.h>
 #include <PinChangeInterrupt.h>
 
-//#include <EnableInterrupt.h>
+
 #include "ResiButton.h"
 #include <U8glib.h>
 
@@ -33,7 +33,7 @@ ResiButton earthB(9); // = new Button(9);				// flash or earth button for specia
 #define I2C_SLA     (0x3c*2) //i2c address of the display
 
 //the OELD Display
-U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_FAST);  // VDD=5V GND=GND SCL=A5 SDA=A4
+U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_FAST);  // VDD=3V GND=GND SCL=A5 SDA=A4
 
 //************************** SIN TABLE *************************************
 // Samples table : one period sampled on 128 samples and
@@ -59,7 +59,7 @@ const unsigned char auc_SinParam [128] = {
 //1477hz  ---> x_SW = 96
 //1633hz  ---> x_SW = 107
 
-const char n1KHz = SWC(1000); 
+const char auc1KHz = SWC(1000); 
 
 #if Fck == 8000000 // 8 MHz
  const unsigned char auc_frequencyH [4] = {79,87,96,107}; //8MHz
@@ -77,7 +77,7 @@ const char n1KHz = SWC(1000);
 
 //
 
-const String digits = "123A456B789C*0#D"; // position for lookup into Freq. Table
+const String alldigits = "123A456B789C*0#D"; // position for lookup into Freq. Table
 
 //**************************  global variables  ****************************
 volatile unsigned char x_SWa = 0x00;               // step width of high frequency
@@ -95,7 +95,7 @@ volatile unsigned long last_impulse_at = 0;
 //**************************************************************************
 ISR (TIMER2_OVF_vect)
 {
-	// move Pointer about step width aheaed
+	// move Pointer about step width ahead
 	i_CurSinValA += x_SWa;
 	i_CurSinValB += x_SWb;
 	// normalize Temp-Pointer
@@ -146,17 +146,33 @@ void dialNumber(String nrstr) {
 
 void dialDigit(char digitchar) {
 
-	unsigned short digitpos = digits.indexOf(digitchar); //get position
+	unsigned short digitpos = alldigits.indexOf(digitchar); //get position
 
 	x_SWa = auc_frequencyH[(digitpos & 0x03)];	// column of 4x4 DTMF Table
 	x_SWb = auc_frequencyL[(digitpos /4)]; //row of DTMF Table
 
+	pinMode(dtmfopin, OUTPUT); //output pin ready
 	bitSet(TIMSK2,TOIE2); // timer interrupt on
-	delay (70); //tone duration
+	delay (100); //tone duration
 	//tone off
+	pinMode(dtmfopin, INPUT); //make it high impedance
 	bitClear(TIMSK2,TOIE2);
-	//we might think about switch-off this output pin
-	delay (30); // pause
+	delay (50); // pause
+}
+
+void sendTone (char auc_tone, unsigned int duration) {
+	
+	// a bit ugly hack to reuse the DTMF tone generation ISR
+	x_SWa = auc_tone;
+	x_SWb = auc_tone;
+
+	pinMode(dtmfopin, OUTPUT); //output pin ready
+	bitSet(TIMSK2,TOIE2); // timer interrupt on
+	delay (duration); //tone duration
+	//tone off
+	pinMode(dtmfopin, INPUT); //make it high impedance
+	bitClear(TIMSK2,TOIE2); //switch off ISR
+
 }
 
 
@@ -177,9 +193,6 @@ void setup ()
 	//enableInterrupt(earthB.pinNr,  ISR_earthButton, CHANGE);
 	attachPCINT(digitalPinToPCINT(earthB.pinNr),  ISR_earthButton, CHANGE);
 	
-
-	//setup DTMF output
-	pinMode(dtmfopin, OUTPUT);
 	noInterrupts();           // disable all interrupts
 	//ToDo is that correct?
 	TCCR2A = 0;
@@ -190,10 +203,7 @@ void setup ()
 	bitClear(TIMSK2,TOIE2);
 	interrupts();             // enable all interrupts
 	// timer interrupt is enabled during dialing: bitSet(TIMSK2,TOIE2)
-
-	//earthB.begin();
-
-
+	
 }
 
 unsigned long diff2 = 0;
@@ -208,7 +218,7 @@ unsigned char B_state = 0;
 void loop ()
 {
 
-	//we had a racecondition, so make it atomar
+	//we had a race condition, so make it atomic
 	noInterrupts();
 	diff2 = millis () - last_impulse_at;
 	interrupts();
