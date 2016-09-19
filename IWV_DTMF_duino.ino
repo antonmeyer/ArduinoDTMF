@@ -7,8 +7,6 @@
 #include "ResiButton.h"
 #include <U8glib.h>
 
-
-
 //***************************************************************************
 //** DTMF Generator based on ATMEL AVR-314 Application note
 //***************************************************************************
@@ -59,14 +57,14 @@ const unsigned char auc_SinParam [128] = {
 //1477hz  ---> x_SW = 96
 //1633hz  ---> x_SW = 107
 
-const char auc1KHz = SWC(1000); 
+const char auc1KHz = SWC(1000);
 
 #if Fck == 8000000 // 8 MHz
- const unsigned char auc_frequencyH [4] = {79,87,96,107}; //8MHz
- const unsigned char auc_frequencyL [4] = {46,50,56,62}; //8MHz
+const unsigned char auc_frequencyH [4] = {79,87,96,107}; //8MHz
+const unsigned char auc_frequencyL [4] = {46,50,56,62}; //8MHz
 #else
- const unsigned char auc_frequencyH [4] = {40, 44, 48,53}; //@16MHz 
- const unsigned char auc_frequencyL [4] = {23, 25, 28, 31}; //@16MHz
+const unsigned char auc_frequencyH [4] = {40, 44, 48,53}; //@16MHz
+const unsigned char auc_frequencyL [4] = {23, 25, 28, 31}; //@16MHz
 #endif
 //const unsigned char auc_frequencyH [4] = {SWC(1209), SWC(1336), SWC(1477), SWC(1633)};
 //low frequency (row)
@@ -175,8 +173,6 @@ void sendTone (char auc_tone, unsigned int duration) {
 
 }
 
-
-
 //**************************************************************************
 // Initialization
 //**************************************************************************
@@ -187,10 +183,8 @@ void setup ()
 	//setup impulse counter ISR
 	pinMode(IWVpin, INPUT_PULLUP);
 	attachPCINT(digitalPinToPCINT(IWVpin),  ISR_countImpulse, RISING);
-	//enableInterrupt(IWVpin,  ISR_countImpulse, RISING);
 
 	//init button ISR
-	//enableInterrupt(earthB.pinNr,  ISR_earthButton, CHANGE);
 	attachPCINT(digitalPinToPCINT(earthB.pinNr),  ISR_earthButton, CHANGE);
 	
 	noInterrupts();           // disable all interrupts
@@ -210,19 +204,21 @@ unsigned long diff2 = 0;
 unsigned short newdigit = 0;
 String numberstr;
 String nr_str2 = String("");
-unsigned char B_state = 0; 
+unsigned char B_state = 0;
 
-// ToDo Button Lib is not good for timing
-//clean up the 
 
 void loop ()
 {
 
+	
+	if ((B_state < 2) && (earthB.getState() == 2)) { //we´ve  just catch a state change to 2)
+		B_state = earthB.getState();
+		sendTone(auc1KHz, 25); //signal tone to the user
+	}
 	//we had a race condition, so make it atomic
 	noInterrupts();
 	diff2 = millis () - last_impulse_at;
 	interrupts();
-	
 	if ((iwvcounter > 0) && (diff2 > 300)) {
 		// we have a new digit
 		newdigit = iwvcounter%10; // 10 -> 0
@@ -231,17 +227,18 @@ void loop ()
 
 		if (B_state == 0)
 		{ //normal dialing
-			numberstr = String(newdigit); 	
+			numberstr = String(newdigit);
 		} else if (B_state == 2)
 		{ // shift function
 			earthB.clearState(); //clear status as it is a single action
+			B_state = 0;
 			numberstr = shift_func (newdigit);
 		}
 		
 		dialNumber(numberstr);
 		Serial.print(numberstr);
 		nr_str2.concat(numberstr);
-				
+		
 		iwvcounter = 0;
 	}
 
@@ -261,8 +258,6 @@ void draw(void) {
 	
 	u8g.setFont(u8g_font_ncenR14r);
 	u8g.setPrintPos(0,14);
-	
-
 	if (nr_str2.length() == 0) {
 		u8g.print("Please Dial: ");
 	} else u8g.print(nr_str2);
@@ -286,15 +281,13 @@ void draw(void) {
 		u8g.print(iwvcounter%10);
 	}
 
-
-
 	//getStrWidth
 }
 
 String shift_func (unsigned short digit) {
 
 	if (digit == 7) return "*";
-		
+	
 	if (digit == 9) return "#";
 
 	
