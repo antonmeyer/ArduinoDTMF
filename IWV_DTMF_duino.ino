@@ -1,3 +1,4 @@
+#include <Button.h>
 #include <PinChangeInterruptSettings.h>
 #include <PinChangeInterruptPins.h>
 #include <PinChangeInterruptBoards.h>
@@ -17,6 +18,21 @@
 
 #define dtmfopin	3			//dtmf output pin 3 = OC2B, timer2
 #define IWVpin		7				// counts the impulse
+
+//************************************************************************
+//** NSA switch is closed when the rotary disk is moved
+//** if user hold the disk for a longer time than the state is changed
+//** advantage: no need for extra button for extra function, 1 finger usage
+//** disadvantage: tricky timing
+//** stop nsa time measurement as soon IWVcounter > 0
+//** giving user feedback with tone might interfer with first IWV impulse; both use ISR
+//**	-> IWV ISR disable DTMF ISR
+//*************************************************************************
+Button nsa_switch(10);
+unsigned long nsa_start; // used for measure the duration
+unsigned short nsa_state = 0; //define the state
+#define NSA_short 1500 //ms to enter state 1
+#define NSA_long 3000 // ms to enter state 2
 
 ResiButton earthB(9); // = new Button(9);				// flash or earth button for special functions
 // if pressed short:
@@ -58,6 +74,7 @@ const unsigned char auc_SinParam [128] = {
 //1633hz  ---> x_SW = 107
 
 const char auc1KHz = SWC(1000);
+const char auc600Hz = SWC(600);
 
 #if Fck == 8000000 // 8 MHz
 const unsigned char auc_frequencyH [4] = {79,87,96,107}; //8MHz
@@ -89,7 +106,7 @@ volatile unsigned char iwvcounter =0;
 volatile unsigned long last_impulse_at = 0;
 
 //**************************************************************************
-// Timer overflow interrupt service routine
+// Timer overflow interrupt service routine for DTMF sine wave
 //**************************************************************************
 ISR (TIMER2_OVF_vect)
 {
@@ -108,15 +125,19 @@ ISR (TIMER2_OVF_vect)
 // counts the HW impulse from IWVpin on the RISING edge
 void ISR_countImpulse (void)
 {
+
+	//ToDo clean up; reset of counter is done outside; debouncing did not work reliable and done with capacitor
 	//noInterrupts(); ToDo not sure if this is needed
-	unsigned long diff = millis() - last_impulse_at;
+	/*unsigned long diff = millis() - last_impulse_at;
 	
 	if (diff > 300){
-		//if we have not been called that long it is a new digit
-		iwvcounter = 1;
-		last_impulse_at = millis();
+	//if we have not been called that long it is a new digit
+	iwvcounter = 1;
+	last_impulse_at = millis();
 	}
-	else if (diff > 50) {
+	else
+	*/
+	if ((millis() - last_impulse_at) > 25) {
 		// we are in the middle of a rotating disk
 		// we check for bouncing, normal impulse take 100 ms (60/40)
 		// if diff is too short we ignore it
@@ -198,6 +219,7 @@ void setup ()
 	interrupts();             // enable all interrupts
 	// timer interrupt is enabled during dialing: bitSet(TIMSK2,TOIE2)
 	
+	nsa_switch.begin();
 }
 
 unsigned long diff2 = 0;
@@ -206,96 +228,137 @@ String numberstr;
 String nr_str2 = String("");
 unsigned char B_state = 0;
 
+boolean newdraw= true; //we have to draw the display for the first time
+
 
 void loop ()
 {
 
-	
-	if ((B_state < 2) && (earthB.getState() == 2)) { //we´ve  just catch a state change to 2)
-		B_state = earthB.getState();
-		sendTone(auc1KHz, 25); //signal tone to the user
-	}
-	//we had a race condition, so make it atomic
-	noInterrupts();
-	diff2 = millis () - last_impulse_at;
-	interrupts();
-	if ((iwvcounter > 0) && (diff2 > 300)) {
-		// we have a new digit
-		newdigit = iwvcounter%10; // 10 -> 0
+	//nsa switch check and timing check here; do not forget ivw counter
 
-		B_state = earthB.getState();
+	if (nsa_switch.toggled()) nsa_start = millis(); // we do not care so much about direction of toggle as extra checks follows
+	if (iwvcounter == 0) {
+		
+		if (nsa_switch.pressed() && (nsa_state < 2)) {
+			
+			unsigned long nsa_diff = millis() - nsa_start;
+			if (nsa_diff > NSA_long ) { // we enter 2nd level
+				nsa_state = 2;
+				sendTone(auc1KHz, 50); //notify the user that he can release the disk
+			} else if ( nsa_diff > NSA_short) {
+				// we enter 1st level
+				nsa_state = 1;
+				sendTone(auc600Hz, 50); //notify the user that he can release the disk
+			}
+			// it is to short we have to wait
+		} //nsa_switch pressed		
 
-		if (B_state == 0)
-		{ //normal dialing
-			numberstr = String(newdigit);
-		} else if (B_state == 2)
-		{ // shift function
-			earthB.clearState(); //clear status as it is a single action
-			B_state = 0;
-			numberstr = shift_func (newdigit);
+	} else { // there has been IWV impulse
+		//we had a race condition, so make it atomic
+		// ToDo could we double check the race??
+		noInterrupts();
+		diff2 = millis () - last_impulse_at;
+		interrupts();
+		if ( (diff2 > 300)) {
+			// next impulse would belong to a new digit
+			newdigit = iwvcounter%10; // 10 -> 0
+			switch (nsa_state) {
+
+			case 0 : numberstr = String(newdigit); break;
+
+			case 1 : numberstr = shift_func (newdigit); 
+					nsa_state = 0; // one shot function
+					break;
+
+			case 2 : break; // we handle here the storage
+			}
+			/*
+			B_state = earthB.getState();
+
+			if (B_state == 0)
+			{ //normal dialing
+				numberstr = String(newdigit);
+			} else if (B_state == 2)
+			{ // shift function
+				earthB.clearState(); //clear status as it is a single action
+				B_state = 0;
+				numberstr = shift_func (newdigit);
+			}
+			*/
+			
+			dialNumber(numberstr);
+			Serial.print(numberstr);
+			nr_str2.concat(numberstr);
+			
+			iwvcounter = 0;
+			newdraw = true;
+		}
+		}
+
+		if ((B_state < 2) && (earthB.getState() == 2)) { //we´ve  just catch a state change to 2)
+			B_state = earthB.getState();
+			sendTone(auc1KHz, 50); //signal tone to the user
 		}
 		
-		dialNumber(numberstr);
-		Serial.print(numberstr);
-		nr_str2.concat(numberstr);
+		//picture loop
+		if (newdraw || (iwvcounter > 0) ){
+			//someone told to draw new, or number disk is just dialed
+			u8g.firstPage();
+			do {
+				draw();
+			} while( u8g.nextPage() );
+			newdraw = false ; // we have done so
+		}
+
 		
-		iwvcounter = 0;
+		//dialNumber(digits); //test
+		//delay(1000);
+
 	}
 
-	// picture loop; we might reduce this call to the changes of iwvcounter
-	u8g.firstPage();
-	do {
-		draw();
-	} while( u8g.nextPage() );
-	
-	//dialNumber(digits); //test
-	//delay(1000);
+	void draw(void) {
+		// graphic commands to redraw the complete screen should be placed here
+		
+		u8g.setFont(u8g_font_ncenR14r);
+		u8g.setPrintPos(0,14);
+		if (nr_str2.length() == 0) {
+			u8g.print("Please Dial: ");
+		} else u8g.print(nr_str2);
 
-}
-
-void draw(void) {
-	// graphic commands to redraw the complete screen should be placed here
-	
-	u8g.setFont(u8g_font_ncenR14r);
-	u8g.setPrintPos(0,14);
-	if (nr_str2.length() == 0) {
-		u8g.print("Please Dial: ");
-	} else u8g.print(nr_str2);
-
-	/*u8g.setPrintPos(0,64);
-	u8g.print(earthB.isr_cnt);
-	u8g.setPrintPos(45,64);
-	u8g.print(earthB.getState());
-	u8g.setPrintPos(60,64);
-	u8g.print(earthB.diff_event);
-	*/
-
-	if (earthB.getState() == 2) {
-		u8g.setPrintPos(5,50);
-		u8g.print("^");
-	}
-
-	if (iwvcounter > 0) {
-		u8g.setFont(u8g_font_ncenR24n);
+		/*u8g.setPrintPos(0,64);
+		u8g.print(earthB.isr_cnt);
 		u8g.setPrintPos(45,64);
-		u8g.print(iwvcounter%10);
+		u8g.print(earthB.getState());
+		u8g.setPrintPos(60,64);
+		u8g.print(earthB.diff_event);
+		*/
+
+		if (earthB.getState() == 2) {
+			u8g.setPrintPos(5,50);
+			u8g.print("^");
+		}
+
+		if (iwvcounter > 0) {
+			u8g.setFont(u8g_font_ncenR24n);
+			u8g.setPrintPos(45,64);
+			u8g.print(iwvcounter%10);
+		}
+
+		//getStrWidth
 	}
 
-	//getStrWidth
-}
+	String shift_func (unsigned short digit) {
 
-String shift_func (unsigned short digit) {
+		if (digit == 7) return "*";
+		
+		if (digit == 9) return "#";
 
-	if (digit == 7) return "*";
-	
-	if (digit == 9) return "#";
+		
 
-	
+		//if 1..5 get stored number
 
-	//if 1..5 get stored number
-
-	return "";
-}
+		return "";
+	}
 
 
 
