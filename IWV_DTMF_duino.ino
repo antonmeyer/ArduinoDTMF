@@ -270,7 +270,7 @@ void loop ()
 					nsa_state = 0; // one shot function
 					break;
 
-			case 2 : break; // we handle here the storage
+			case 2 : nsa_state = 0; break; // we handle here the storage
 			}
 			/*
 			B_state = earthB.getState();
