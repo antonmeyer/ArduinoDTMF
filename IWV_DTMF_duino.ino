@@ -27,27 +27,22 @@
 //** stop nsa time measurement as soon IWVcounter > 0
 //** giving user feedback with tone might interfer with first IWV impulse; both use ISR
 //**	-> IWV ISR disable DTMF ISR
+//
+//** To dial *: dial 7 hold the dial disk for NSA_short wait for the tone (600Hz, 50ms) and release the disk
+//** To dial # : sames as above with 9
+//** To dial short numbers: same as above with 1..5
+//** To program short number: dial storage dial place 1..5; hold disk NSA_long, wait for tone 1KHz, 300ms
+//**							release; than enter number, wait until timeout tone
 //*************************************************************************
+
+
+
 Button nsa_switch(10);
 unsigned long nsa_start; // used for measure the duration
 unsigned short nsa_state = 0; //define the state
 #define NSA_short 1500 //ms to enter state 1
-#define NSA_long 3000 // ms to enter state 2
+#define NSA_long 5000 // ms to enter state 2
 
-ResiButton earthB(9); // = new Button(9);				// flash or earth button for special functions
-// if pressed short:
-// short dialing phone numbers stored position 1 ..5, 0 = last number
-// pressed short and dialed 7 -> *, 9 -> #
-// if long pressed
-// init number storage function, enter number, finish long press, dial position
-//if you made a mistake, just hang up = boot the duino
-
-#define SDA			A4
-#define SCL			A5
-#define I2C_SLA     (0x3c*2) //i2c address of the display
-
-//the OELD Display
-U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_FAST);  // VDD=3V GND=GND SCL=A5 SDA=A4
 
 //************************** SIN TABLE *************************************
 // Samples table : one period sampled on 128 samples and
@@ -110,15 +105,24 @@ volatile unsigned long last_impulse_at = 0;
 //**************************************************************************
 ISR (TIMER2_OVF_vect)
 {
-	// move Pointer about step width ahead
-	i_CurSinValA += x_SWa;
-	i_CurSinValB += x_SWb;
-	// normalize Temp-Pointer
 
-	i_TmpSinValA  =  (char)(((i_CurSinValA+4) >> 3)&(0x007F));
-	i_TmpSinValB  =  (char)(((i_CurSinValB+4) >> 3)&(0x007F));
-	// calculate PWM value: high frequency value + 3/4 low frequency value
-	OCR2B = (auc_SinParam[i_TmpSinValA] + (auc_SinParam[i_TmpSinValB]-(auc_SinParam[i_TmpSinValB]>>2)));
+	if (x_SWb) { // dual tone
+		// move Pointer about step width ahead
+		i_CurSinValA += x_SWa;
+		i_CurSinValB += x_SWb;
+		// normalize Temp-Pointer
+
+		i_TmpSinValA  =  (char)(((i_CurSinValA+4) >> 3)&(0x007F));
+		i_TmpSinValB  =  (char)(((i_CurSinValB+4) >> 3)&(0x007F));
+		// calculate PWM value: high frequency value + 3/4 low frequency value
+		OCR2B = (auc_SinParam[i_TmpSinValA] + (auc_SinParam[i_TmpSinValB]-(auc_SinParam[i_TmpSinValB]>>2)));
+		} else { // single tone
+
+		i_CurSinValA += x_SWa;
+		i_TmpSinValA  =  (char)(((i_CurSinValA+4) >> 3)&(0x007F));
+		OCR2B = auc_SinParam[i_TmpSinValA];
+
+	}
 	
 }
 
@@ -146,11 +150,6 @@ void ISR_countImpulse (void)
 	};
 	//interrupts();
 
-}
-
-void ISR_earthButton (void)
-{
-	earthB.handle_change();
 }
 
 
@@ -183,7 +182,7 @@ void sendTone (char auc_tone, unsigned int duration) {
 	
 	// a bit ugly hack to reuse the DTMF tone generation ISR
 	x_SWa = auc_tone;
-	x_SWb = auc_tone;
+	x_SWb = 0; //single tone
 
 	pinMode(dtmfopin, OUTPUT); //output pin ready
 	bitSet(TIMSK2,TOIE2); // timer interrupt on
@@ -199,14 +198,11 @@ void sendTone (char auc_tone, unsigned int duration) {
 //**************************************************************************
 void setup ()
 {
-	Serial.begin(57600); //for debug purpose
+	Serial.begin(19200); //for debug purpose
 
 	//setup impulse counter ISR
 	pinMode(IWVpin, INPUT_PULLUP);
 	attachPCINT(digitalPinToPCINT(IWVpin),  ISR_countImpulse, RISING);
-
-	//init button ISR
-	attachPCINT(digitalPinToPCINT(earthB.pinNr),  ISR_earthButton, CHANGE);
 	
 	noInterrupts();           // disable all interrupts
 	//ToDo is that correct?
@@ -220,13 +216,14 @@ void setup ()
 	// timer interrupt is enabled during dialing: bitSet(TIMSK2,TOIE2)
 	
 	nsa_switch.begin();
+	iwvcounter=0;
 }
 
 unsigned long diff2 = 0;
 unsigned short newdigit = 0;
-String numberstr;
+String numberstr = String("");
 String nr_str2 = String("");
-unsigned char B_state = 0;
+
 
 boolean newdraw= true; //we have to draw the display for the first time
 
@@ -234,26 +231,42 @@ boolean newdraw= true; //we have to draw the display for the first time
 void loop ()
 {
 
+	
+	/* //debug test hw optimzing
+	for (int i2 = 0; i2 < 4; i2++) {
+
+	sendTone(auc_frequencyL[i2], 1000);
+	delay(1000);
+	}
+
+	for (int i2 = 0; i2 < 4; i2++) {
+
+	sendTone(auc_frequencyH[i2], 1000);
+	delay(500);
+	}
+
+	delay (3000);
+	*/
 	//nsa switch check and timing check here; do not forget ivw counter
 
-	if (nsa_switch.toggled()) nsa_start = millis(); // we do not care so much about direction of toggle as extra checks follows
+	if (nsa_switch.pressed())nsa_start = millis();// one shot event
 	if (iwvcounter == 0) {
 		
-		if (nsa_switch.pressed() && (nsa_state < 2)) {
+		if ((nsa_switch.read() == Button::PRESSED) && (nsa_state < 2)) {
 			
 			unsigned long nsa_diff = millis() - nsa_start;
 			if (nsa_diff > NSA_long ) { // we enter 2nd level
 				nsa_state = 2;
-				sendTone(auc1KHz, 50); //notify the user that he can release the disk
-			} else if ( nsa_diff > NSA_short) {
+				sendTone(auc1KHz, 300); //notify the user that he can release the disk
+				} else if (( nsa_diff > NSA_short) && (nsa_state < 1)){
 				// we enter 1st level
 				nsa_state = 1;
 				sendTone(auc600Hz, 50); //notify the user that he can release the disk
 			}
 			// it is to short we have to wait
-		} //nsa_switch pressed		
+		} //nsa_switch pressed
 
-	} else { // there has been IWV impulse
+		} else { // there has been IWV impulse
 		//we had a race condition, so make it atomic
 		// ToDo could we double check the race??
 		noInterrupts();
@@ -264,101 +277,41 @@ void loop ()
 			newdigit = iwvcounter%10; // 10 -> 0
 			switch (nsa_state) {
 
-			case 0 : numberstr = String(newdigit); break;
+				case 0 : numberstr = String(newdigit); break;
 
-			case 1 : numberstr = shift_func (newdigit); 
-					nsa_state = 0; // one shot function
-					break;
+				case 1 : numberstr = shift_func (newdigit);
+				nsa_state = 0; // one shot function
+				break;
 
-			case 2 : nsa_state = 0; break; // we handle here the storage
+				case 2 : nsa_state = 0; break; // we handle here the storage
 			}
-			/*
-			B_state = earthB.getState();
-
-			if (B_state == 0)
-			{ //normal dialing
-				numberstr = String(newdigit);
-			} else if (B_state == 2)
-			{ // shift function
-				earthB.clearState(); //clear status as it is a single action
-				B_state = 0;
-				numberstr = shift_func (newdigit);
-			}
-			*/
 			
 			dialNumber(numberstr);
-			Serial.print(numberstr);
+			//Serial.print(numberstr);
 			nr_str2.concat(numberstr);
 			
 			iwvcounter = 0;
-			newdraw = true;
-		}
-		}
-
-		if ((B_state < 2) && (earthB.getState() == 2)) { //we´ve  just catch a state change to 2)
-			B_state = earthB.getState();
-			sendTone(auc1KHz, 50); //signal tone to the user
 		}
 		
-		//picture loop
-		if (newdraw || (iwvcounter > 0) ){
-			//someone told to draw new, or number disk is just dialed
-			u8g.firstPage();
-			do {
-				draw();
-			} while( u8g.nextPage() );
-			newdraw = false ; // we have done so
-		}
-
 		
 		//dialNumber(digits); //test
 		//delay(1000);
 
 	}
+}
 
-	void draw(void) {
-		// graphic commands to redraw the complete screen should be placed here
-		
-		u8g.setFont(u8g_font_ncenR14r);
-		u8g.setPrintPos(0,14);
-		if (nr_str2.length() == 0) {
-			u8g.print("Please Dial: ");
-		} else u8g.print(nr_str2);
+String shift_func (unsigned short digit) {
 
-		/*u8g.setPrintPos(0,64);
-		u8g.print(earthB.isr_cnt);
-		u8g.setPrintPos(45,64);
-		u8g.print(earthB.getState());
-		u8g.setPrintPos(60,64);
-		u8g.print(earthB.diff_event);
-		*/
+	if (digit == 7) return "*";
+	
+	if (digit == 9) return "#";
 
-		if (earthB.getState() == 2) {
-			u8g.setPrintPos(5,50);
-			u8g.print("^");
-		}
+	
 
-		if (iwvcounter > 0) {
-			u8g.setFont(u8g_font_ncenR24n);
-			u8g.setPrintPos(45,64);
-			u8g.print(iwvcounter%10);
-		}
+	//if 1..5 get stored number
 
-		//getStrWidth
-	}
-
-	String shift_func (unsigned short digit) {
-
-		if (digit == 7) return "*";
-		
-		if (digit == 9) return "#";
-
-		
-
-		//if 1..5 get stored number
-
-		return "";
-	}
+	return "";
+}
 
 
 
