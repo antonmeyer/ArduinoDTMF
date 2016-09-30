@@ -1,3 +1,4 @@
+#include <EEPROM.h>
 #include <Button.h>
 #include <PinChangeInterruptSettings.h>
 #include <PinChangeInterruptPins.h>
@@ -5,8 +6,16 @@
 #include <PinChangeInterrupt.h>
 
 
-#include "ResiButton.h"
-#include <U8glib.h>
+//*************************************************************************
+//** EEPROM stuff
+//** we store short dial numbers
+//** in the setup we check if storage was initialized
+//** as we have enough space we reserve 20 Byte per number and store it as String
+//*****************************************************************************
+
+static const char EEPROM_init_string[] =  "IWV30092016";
+
+char phoneNumber[20];
 
 //***************************************************************************
 //** DTMF Generator based on ATMEL AVR-314 Application note
@@ -42,7 +51,7 @@ unsigned long nsa_start; // used for measure the duration
 unsigned short nsa_state = 0; //define the state
 #define NSA_short 1500 //ms to enter state 1
 #define NSA_long 5000 // ms to enter state 2
-
+#define STATE2_TIME_OUT 4000
 
 //************************** SIN TABLE *************************************
 // Samples table : one period sampled on 128 samples and
@@ -105,42 +114,28 @@ volatile unsigned long last_impulse_at = 0;
 //**************************************************************************
 ISR (TIMER2_OVF_vect)
 {
-
 	if (x_SWb) { // dual tone
 		// move Pointer about step width ahead
 		i_CurSinValA += x_SWa;
 		i_CurSinValB += x_SWb;
 		// normalize Temp-Pointer
-
 		i_TmpSinValA  =  (char)(((i_CurSinValA+4) >> 3)&(0x007F));
 		i_TmpSinValB  =  (char)(((i_CurSinValB+4) >> 3)&(0x007F));
 		// calculate PWM value: high frequency value + 3/4 low frequency value
 		OCR2B = (auc_SinParam[i_TmpSinValA] + (auc_SinParam[i_TmpSinValB]-(auc_SinParam[i_TmpSinValB]>>2)));
+
 		} else { // single tone
 
 		i_CurSinValA += x_SWa;
 		i_TmpSinValA  =  (char)(((i_CurSinValA+4) >> 3)&(0x007F));
 		OCR2B = auc_SinParam[i_TmpSinValA];
-
 	}
-	
 }
 
 // counts the HW impulse from IWVpin on the RISING edge
 void ISR_countImpulse (void)
-{
-
-	//ToDo clean up; reset of counter is done outside; debouncing did not work reliable and done with capacitor
-	//noInterrupts(); ToDo not sure if this is needed
-	/*unsigned long diff = millis() - last_impulse_at;
+{	//noInterrupts(); ToDo not sure if this is needed
 	
-	if (diff > 300){
-	//if we have not been called that long it is a new digit
-	iwvcounter = 1;
-	last_impulse_at = millis();
-	}
-	else
-	*/
 	if ((millis() - last_impulse_at) > 25) {
 		// we are in the middle of a rotating disk
 		// we check for bouncing, normal impulse take 100 ms (60/40)
@@ -217,100 +212,144 @@ void setup ()
 	
 	nsa_switch.begin();
 	iwvcounter=0;
+
+	// EEPROM init check
+	unsigned short iee;
+	for (iee =0; iee < sizeof(EEPROM_init_string); iee++) {
+		if (EEPROM.read(iee) != EEPROM_init_string[iee]) break;
+	}
+	//if we did not reach the end of the compare string, we (re)initial the EEPROM storage structure
+	if (iee < sizeof(EEPROM_init_string)) {
+		Serial.println("init EEPROM");
+
+		EEPROM.put(0,EEPROM_init_string);
+		for (iee=1; iee < 6; iee++) { // 1..5
+			EEPROM.put(iee*sizeof(phoneNumber),0); //set the phone
+		}
+	}
+
 }
 
-unsigned long diff2 = 0;
+unsigned long diff_iwv = 0;
+unsigned long nsa_diff = 0;
 unsigned short newdigit = 0;
 String numberstr = String("");
-String nr_str2 = String("");
+String numberstr2 =  String("");
 
-
-boolean newdraw= true; //we have to draw the display for the first time
-
+unsigned long lastdigittime = 0; //when has the last digit been dialed? reset the state 2
 
 void loop ()
 {
-
-	
-	/* //debug test hw optimzing
-	for (int i2 = 0; i2 < 4; i2++) {
-
-	sendTone(auc_frequencyL[i2], 1000);
-	delay(1000);
-	}
-
-	for (int i2 = 0; i2 < 4; i2++) {
-
-	sendTone(auc_frequencyH[i2], 1000);
-	delay(500);
-	}
-
-	delay (3000);
-	*/
 	//nsa switch check and timing check here; do not forget ivw counter
 
-	if (nsa_switch.pressed())nsa_start = millis();// one shot event
-	if (iwvcounter == 0) {
+	//finish state 2
+	if ((nsa_state == 2) && ((millis() - lastdigittime) > STATE2_TIME_OUT)) {
+
+		nsa_state = 0; // reset the state
+		//get the storage place (first digit)
+		//store the remaining string at position
+
+		//Serial.println(numberstr2);
+		boolean store_ok = false;
+
+		if ((numberstr2.length() > 1) && (numberstr2.length() < 20)){
+			
+			unsigned short pos = numberstr2.charAt(0) - '0';
+			numberstr2.remove(0,1);
+			if ((pos > 0) && (pos <6)) {
+				numberstr2.toCharArray(phoneNumber,sizeof(phoneNumber));
+				EEPROM.put(pos*sizeof(phoneNumber), phoneNumber);
+				store_ok = true;
+			}
+		}
+	
+		//send notification tone
+		if (store_ok) {
+			sendTone(auc600Hz, 300); delay(50);
+			sendTone(auc1KHz, 300);
+		}
+		else {
+			sendTone(auc600Hz, 100); delay(50);
+			sendTone(auc600Hz, 100); delay(50);
+			sendTone(auc600Hz, 100); delay(50);
+			sendTone(auc600Hz, 100); delay(50);			
+		}
+		//clear numberstring
+		numberstr2.remove(0); //deletes the String but keeps the object
+	} // reset state 2
+
+	
+	if (iwvcounter == 0) { //to make sure IWV has not started = disk not released
 		
 		if ((nsa_switch.read() == Button::PRESSED) && (nsa_state < 2)) {
+			if (nsa_switch.pressed()) nsa_start = millis(); //get the one shot event
+
+			nsa_diff = millis() - nsa_start;
 			
-			unsigned long nsa_diff = millis() - nsa_start;
 			if (nsa_diff > NSA_long ) { // we enter 2nd level
 				nsa_state = 2;
+				numberstr.remove(0); //delete the numberstring
+				lastdigittime = millis (); // we start state 2
 				sendTone(auc1KHz, 300); //notify the user that he can release the disk
 				} else if (( nsa_diff > NSA_short) && (nsa_state < 1)){
 				// we enter 1st level
 				nsa_state = 1;
-				sendTone(auc600Hz, 50); //notify the user that he can release the disk
+				sendTone(auc600Hz, 100); //notify the user that he can release the disk
 			}
 			// it is to short we have to wait
 		} //nsa_switch pressed
 
-		} else { // there has been IWV impulse
+		} else { // there has been IWV impulse iwvcounter != 0
 		//we had a race condition, so make it atomic
 		// ToDo could we double check the race??
 		noInterrupts();
-		diff2 = millis () - last_impulse_at;
+		diff_iwv = millis () - last_impulse_at;
 		interrupts();
-		if ( (diff2 > 300)) {
+		if ( (diff_iwv > 300)) {
 			// next impulse would belong to a new digit
 			newdigit = iwvcounter%10; // 10 -> 0
-			switch (nsa_state) {
+			iwvcounter = 0; //reset the counter for a new digit
+			lastdigittime = millis();
 
-				case 0 : numberstr = String(newdigit); break;
+			switch (nsa_state) { //in which dial mode we are?
+
+				case 0 : dialDigit(newdigit +'0');
+				break;
 
 				case 1 : numberstr = shift_func (newdigit);
+				dialNumber(numberstr);
+				//Serial.println(numberstr);
 				nsa_state = 0; // one shot function
 				break;
 
-				case 2 : nsa_state = 0; break; // we handle here the storage
+				case 2 :  //add digit to number string
+				numberstr2.concat(String(newdigit, DEC));
+				break; // we handle here the storage
 			}
 			
-			dialNumber(numberstr);
-			//Serial.print(numberstr);
-			nr_str2.concat(numberstr);
-			
-			iwvcounter = 0;
+			//Serial.print(numberstr);			
 		}
-		
-		
-		//dialNumber(digits); //test
-		//delay(1000);
 
 	}
 }
 
+
 String shift_func (unsigned short digit) {
+
+	String result = "";
 
 	if (digit == 7) return "*";
 	
 	if (digit == 9) return "#";
 
-	
+	// 1..5 get stored number at position digit
+	if ((digit > 0) && (digit <6)) {
+		
+		EEPROM.get(digit*sizeof(phoneNumber),phoneNumber);
+		result = String(phoneNumber);
+	}
 
-	//if 1..5 get stored number
-
-	return "";
+	return result;
 }
 
 
