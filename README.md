@@ -15,7 +15,9 @@ Good enough.
 
 Pin 7 is connected to the impulse rotary dialer contact. This "number" switch
 is connected to the arduino only. Remove all conncetion to the old phone.
-Pin 9 is the other dial switch, closed as soon the disk is moved.
+Pin 9 is the other dial switch, closed as soon the dial disk is moved.
+
+Scheme is in the picture directory.
 
 If you want to adapt it to different HW you have to care:
 - dtmfopin: look for the timer / PWM output pins
