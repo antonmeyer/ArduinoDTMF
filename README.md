@@ -7,14 +7,15 @@ https://www-user.tu-chemnitz.de/~heha/basteln/Haus/Telefon/Impulswahl%E2%86%92DT
 It is working with a W48 dialer and a Fritzbox.
 
 PWM output on Pin 3 needs a passive filter.
-I used a RLC low pass filter. R = 46 Ohm, L unknown, C = 1 uF.
-Coupled into the phone at microphone, with a 470 nF capacitor.
+I used a RC filter. R = 47 Ohm, C = 1 uF.
+Coupled into the phone at microphone.
 Spectral analysis (done with a sound card and audacity) looks terrible,
 but noise is 15 to 20 dB off the signal. Frequency accuracy is < 1%.
 Good enough.
 
 Pin 7 is connected to the impulse rotary dialer contact. This "number" switch
 is connected to the arduino only. Remove all conncetion to the old phone.
+Pin 9 is the other dial switch, closed as soon the disk is moved.
 
 If you want to adapt it to different HW you have to care:
 - dtmfopin: look for the timer / PWM output pins
