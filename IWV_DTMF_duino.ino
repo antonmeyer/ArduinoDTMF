@@ -13,7 +13,7 @@
 //** as we have enough space we reserve 20 Byte per number and store it as String
 //*****************************************************************************
 
-static const char EEPROM_init_string[] =  "IWV30092016";
+static const char EEPROM_init_string[] =  "IWV01102016";
 
 char phoneNumber[20];
 
@@ -26,7 +26,7 @@ char phoneNumber[20];
 #define  Fck        F_CPU/prescaler   // Timer2 working frequency
 
 #define dtmfopin	3			//dtmf output pin 3 = OC2B, timer2
-#define IWVpin		7				// counts the impulse
+#define IWVpin		11				// counts the impulse
 
 //************************************************************************
 //** NSA switch is closed when the rotary disk is moved
@@ -46,7 +46,7 @@ char phoneNumber[20];
 
 
 
-Button nsa_switch(10);
+Button nsa_switch(8);
 unsigned long nsa_start; // used for measure the duration
 unsigned short nsa_state = 0; //define the state
 #define NSA_short 1500 //ms to enter state 1
@@ -193,7 +193,7 @@ void sendTone (char auc_tone, unsigned int duration) {
 //**************************************************************************
 void setup ()
 {
-	Serial.begin(19200); //for debug purpose
+	//Serial.begin(19200); //for debug purpose
 
 	//setup impulse counter ISR
 	pinMode(IWVpin, INPUT_PULLUP);
@@ -220,13 +220,14 @@ void setup ()
 	}
 	//if we did not reach the end of the compare string, we (re)initial the EEPROM storage structure
 	if (iee < sizeof(EEPROM_init_string)) {
-		Serial.println("init EEPROM");
+		//Serial.println("init EEPROM");
 
 		EEPROM.put(0,EEPROM_init_string);
 		for (iee=1; iee < 6; iee++) { // 1..5
 			EEPROM.put(iee*sizeof(phoneNumber),0); //set the phone
 		}
 	}
+	pinMode(LED_BUILTIN, OUTPUT);
 
 }
 
@@ -240,7 +241,8 @@ unsigned long lastdigittime = 0; //when has the last digit been dialed? reset th
 
 void loop ()
 {
-	//nsa switch check and timing check here; do not forget ivw counter
+	
+		//nsa switch check and timing check here; do not forget ivw counter
 
 	//finish state 2
 	if ((nsa_state == 2) && ((millis() - lastdigittime) > STATE2_TIME_OUT)) {
