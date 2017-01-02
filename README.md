@@ -7,15 +7,25 @@ https://www-user.tu-chemnitz.de/~heha/basteln/Haus/Telefon/Impulswahl%E2%86%92DT
 It is working with a W48 dialer and a Fritzbox.
 
 PWM output on Pin 3 needs a passive filter.
-I used a RC filter. R = 47 Ohm, C = 1 uF.
-Coupled into the phone at microphone.
+I use a RC filter. R = 47 Ohm, C = 1 uF.
+Coupled into the phone at microphone M'.
 Spectral analysis (done with a sound card and audacity) looks terrible,
 but noise is 15 to 20 dB off the signal. Frequency accuracy is < 1%.
 Good enough.
 
 Pin 7 is connected to the impulse rotary dialer contact. This "number" switch
 is connected to the arduino only. Remove all conncetion to the old phone.
-Pin 9 is the other dial switch, closed as soon the dial disk is moved.
+Pin 9 is the other dial switch (NSA), closed as soon the dial disk is moved.
+
+To dial * dial 7 but hold disk for 1 second until you hear the beep, than relase disk.
+Same for # with digit 9.
+
+Short dialing programmable for digit 1 .. 5. Once programed it works like * and #.
+Dial digit, hold, wait for beep and release.
+Programming short dialing: dial digit (storage place) hold until you hear the second beep,
+than release disk, dial phonenumber and wait for timeout / conformation tone.
+Ignore confusion with timeout tones from the phone line.
+If something goes wrong, hang up and start over.
 
 Scheme is in the picture directory. Number switches pin should be reviewed for your layout.
 
